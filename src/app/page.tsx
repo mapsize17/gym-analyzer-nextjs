@@ -152,6 +152,13 @@ export default function GymAnalyzerPage() {
       await new Promise(r => setTimeout(r, 400));
 
       const result = await fetch("/api/analyze", { method: "POST", body: fd });
+
+      if (!result.ok) {
+        let errMsg = `Server returned ${result.status}`;
+        try { const errData = await result.json(); if (errData.error) errMsg = errData.error; } catch {}
+        throw new Error(errMsg);
+      }
+
       const data: AnalyzeResponse = await result.json();
 
       // Step 4: Building results

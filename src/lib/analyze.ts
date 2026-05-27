@@ -18,7 +18,7 @@ function enrichExercisesWithVideos(exercises: Exercise[]): Exercise[] {
     fly:"Cable Chest Fly", swing:"Kettlebell Swing", squat:"Barbell Squat", deadlift:"Barbell Deadlift",
     plank:"Plank", push:"Push-Up", chin:"Chin-Up", cycle:"Stationary Cycling", bike:"Stationary Cycling",
     treadmill:"Treadmill Walking/Running", elliptical:"Elliptical Training", "leg press":"Leg Press",
-    tricep:"Cable Tricep Pushdown", bicep:"Dumbbell Bicep Curl", band:"Band Rows", "chest fly":"Cable Chest Fly",
+    tricep:"Cable Tricep Pushdown", bicep:"Dumbbell Bicep Curl", band:"Band Rows",
     "cable row":"Band Rows", "lat pulldown":"Pull-Up", "shoulder press":"Dumbbell Shoulder Press",
     "bicep curl":"Dumbbell Bicep Curl", "tricep pushdown":"Cable Tricep Pushdown",
     "lateral raise":"Dumbbell Shoulder Press", "leg extension":"Leg Press", "leg curl":"Leg Press",
@@ -43,7 +43,7 @@ function enrichExercisesWithVideos(exercises: Exercise[]): Exercise[] {
 }
 
 async function callCloudVision(imagePath: string, prompt: string): Promise<string> {
-  if (!OLLAMA_CLOUD_KEY) return "";
+  if (!OLLAMA_CLOUD_KEY) return "NO_API_KEY";
   try {
     const buffer = await fs.readFile(imagePath);
     const b64 = buffer.toString("base64");
@@ -64,32 +64,36 @@ async function callCloudVision(imagePath: string, prompt: string): Promise<strin
           ]
         }]
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(50_000),
     });
     if (resp.ok) {
       const data = await resp.json();
       return data.choices?.[0]?.message?.content || "";
+    } else {
+      return `API_ERROR:${resp.status}`;
     }
-  } catch {}
-  return "";
+  } catch (err: any) {
+    return `FETCH_ERROR:${err.name}:${err.message}`;
+  }
 }
 
+// Single-pass keyword extraction (fast)
 function findEquipmentKeywords(description: string): string[] {
   const keywords: Record<string, string[]> = {
-    dumbbell: ["dumbbell","dumbbells","dumbell","dumbbell set","free weight"],
-    barbell: ["barbell","bar bell","olympic bar","ez bar","barbell setup","barbell rack"],
-    kettlebell: ["kettlebell","kettle bell","kettle bells"],
-    "resistance band": ["resistance band","exercise band","resistance tube"],
-    bench: ["bench","weight bench","flat bench","adjustable bench","bench press bench"],
-    "cable machine": ["cable","cable machine","pulley","crossover","cable crossover","weight stack"],
+    dumbbell: ["dumbbell","dumbbells","dumbell","free weight"],
+    barbell: ["barbell","bar bell","olympic bar","ez bar"],
+    kettlebell: ["kettlebell","kettle bell"],
+    "resistance band": ["resistance band","exercise band"],
+    bench: ["bench","weight bench","flat bench"],
+    "cable machine": ["cable","cable machine","pulley","cable crossover","weight stack"],
     "smith machine": ["smith machine","smith"],
     "leg press machine": ["leg press","leg-press"],
-    "weight machine": ["weight machine","multi-gym","multi gym","home gym","weight stack machine","selectorized","plate loaded","squat rack","functional trainer","power rack"],
-    "rowing machine": ["rowing machine","rower","ergometer","erg","indoor rower","rowing erg"],
-    "pull up bar": ["pull up bar","pull-up bar","chin up bar","chin-up bar","pullup bar"],
-    "yoga mat": ["yoga mat","exercise mat","fitness mat","yoga"],
-    "exercise bike": ["bike","stationary bike","exercise bike","stationary cycle","spin bike","cycle"],
-    treadmill: ["treadmill","tread mill","running machine","walking machine"],
+    "weight machine": ["weight machine","multi-gym","multi gym","home gym","squat rack","functional trainer","power rack"],
+    "rowing machine": ["rowing machine","rower","ergometer","indoor rower"],
+    "pull up bar": ["pull up bar","pull-up bar","chin up bar","pullup bar"],
+    "yoga mat": ["yoga mat","exercise mat","yoga"],
+    "exercise bike": ["stationary bike","exercise bike","spin bike","cycle"],
+    treadmill: ["treadmill","tread mill","running machine"],
     elliptical: ["elliptical","cross trainer","elliptical trainer"],
   };
   const dl = description.toLowerCase();
@@ -129,29 +133,37 @@ export interface AnalysisResult {
   matched_equipment: string[];
   results: ReturnType<typeof buildEquipmentResult>[];
   equipment_count: number;
+  debug?: string;
 }
 
 export async function analyzeImage(imagePath: string): Promise<AnalysisResult> {
-  const prompts = [
-    "List EVERY piece of gym equipment you can see in this image. Name each one. Be specific and thorough. Look for: dumbbells, barbells, benches, machines, cables, kettlebells, bands, bikes, treadmills, pull-up bars, rowing machines, mats, weight stacks.",
-    "What gym equipment is visible? Identify all equipment items one by one.",
-    "Describe this scene. What fitness equipment do you see? List all machines, weights, benches, and accessories."
-  ];
-
-  const descriptions: string[] = [];
-  for (const prompt of prompts) {
-    const desc = await callCloudVision(imagePath, prompt);
-    if (desc && desc.length > 10) descriptions.push(desc);
+  if (!OLLAMA_CLOUD_KEY) {
+    return {
+      vision_description: "OLLAMA_API_KEY not configured — set it in Vercel environment variables",
+      matched_equipment: [],
+      results: [],
+      equipment_count: 0,
+      debug: "MISSING_API_KEY"
+    };
   }
 
-  const fullDescription = descriptions.length ? descriptions.join(" ") : "Gym scene with various fitness equipment";
+  // Single comprehensive prompt (Vercel 60s timeout — one pass max)
+  const prompt = "Identify ALL gym equipment visible in this image. List each one by name. Be thorough — look for dumbbells, barbells, kettlebells, benches, cable machines, smith machines, leg press, weight machines, multi-gyms, squat racks, pull-up bars, rowing machines, exercise bikes, treadmills, ellipticals, resistance bands, yoga mats, and any other fitness equipment.";
 
-  const allMatched = new Set<string>();
-  for (const desc of descriptions) {
-    for (const k of findEquipmentKeywords(desc)) allMatched.add(k);
+  const desc = await callCloudVision(imagePath, prompt);
+  const debug = desc.startsWith("API_ERROR") || desc.startsWith("FETCH_ERROR") ? desc : undefined;
+
+  if (!desc || desc.length <= 10) {
+    return {
+      vision_description: "Could not analyze image. Try a clearer, well-lit photo.",
+      matched_equipment: [],
+      results: [],
+      equipment_count: 0,
+      debug
+    };
   }
-  const matchedKeys = allMatched.size ? [...allMatched].sort() : findEquipmentKeywords(fullDescription);
 
+  const matchedKeys = findEquipmentKeywords(desc);
   const results: ReturnType<typeof buildEquipmentResult>[] = [];
   const processed = new Set<string>();
   for (const key of matchedKeys) {
@@ -160,22 +172,8 @@ export async function analyzeImage(imagePath: string): Promise<AnalysisResult> {
     results.push(buildEquipmentResult(key, EXERCISE_DB[key]));
   }
 
-  if (results.length <= 2 && descriptions.length <= 2) {
-    const retryPrompt = "Look again carefully. Besides what you already mentioned, what OTHER gym equipment can you see? Look for: weight bench, barbells, dumbbells, cable machine, kettlebells, pull-up bar, treadmill, exercise bike, mats, bands, rowing machine, smith machine, leg press, multi-gym.";
-    const retry = await callCloudVision(imagePath, retryPrompt);
-    if (retry && retry.length > 10) {
-      for (const key of findEquipmentKeywords(retry)) {
-        if (key in EXERCISE_DB && !processed.has(key)) {
-          processed.add(key);
-          results.push(buildEquipmentResult(key, EXERCISE_DB[key]));
-          descriptions.push(retry);
-        }
-      }
-    }
-  }
-
   return {
-    vision_description: fullDescription.slice(0, 600),
+    vision_description: desc.slice(0, 600),
     matched_equipment: [...processed],
     results,
     equipment_count: results.length,
