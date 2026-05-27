@@ -4,6 +4,11 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { analyzeImage } from "@/lib/analyze";
 
+// Prevent Vercel from caching or bundling this route
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -16,7 +21,7 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const uploadDir = join(tmpdir(), "gym-analyzer-uploads");
-    const imgPath = join(uploadDir, "current.jpg");
+    const imgPath = join(uploadDir, `img_${Date.now()}.jpg`);
     try {
       await writeFile(imgPath, buffer);
     } catch {
@@ -25,12 +30,18 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await analyzeImage(imgPath);
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      },
+    });
   } catch (err: any) {
     console.error("Analyze error:", err);
     return NextResponse.json(
       { error: `Analysis failed: ${err.message || "Unknown error"}` },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

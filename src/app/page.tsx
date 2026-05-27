@@ -35,6 +35,17 @@ interface AnalyzeResponse {
   equipment_count?: number;
 }
 
+// Simple hash to verify different images are sent
+function imageHash(dataUrl: string): string {
+  let hash = 0;
+  const s = dataUrl.slice(dataUrl.length - 100);
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16).slice(0, 8);
+}
+
 export default function GymAnalyzerPage() {
   const [imageData, setImageData] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,19 +57,24 @@ export default function GymAnalyzerPage() {
   const [mode, setMode] = useState<"upload" | "camera">("upload");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [lastImageHash, setLastImageHash] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLImageElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  // Store current image data in ref for reliable closure capture
+  const imageDataRef = useRef<string | null>(null);
 
   const resetAll = useCallback(() => {
     setImageData(null);
+    imageDataRef.current = null;
     setResults(null);
     setVisionDesc("");
     setEquipmentCount(0);
     setError("");
+    setLastImageHash("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -88,6 +104,14 @@ export default function GymAnalyzerPage() {
     setTimeout(startCamera, 100);
   }, [startCamera, stopCamera]);
 
+  const setImage = useCallback((data: string) => {
+    setImageData(data);
+    imageDataRef.current = data;
+    setResults(null);
+    setError("");
+    setLastImageHash(imageHash(data));
+  }, []);
+
   const captureFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
     const v = videoRef.current;
@@ -97,24 +121,21 @@ export default function GymAnalyzerPage() {
     if (!ctx) return;
     ctx.drawImage(v, 0, 0, canvasRef.current.width, canvasRef.current.height);
     const data = canvasRef.current.toDataURL("image/jpeg", 0.9);
-    setImageData(data);
-    setResults(null);
-    setError("");
+    setImage(data);
     stopCamera();
     setMode("upload");
-  }, [stopCamera]);
+  }, [stopCamera, setImage]);
 
   const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = evt => {
-      setImageData(evt.target?.result as string);
-      setResults(null);
-      setError("");
+      const data = evt.target?.result as string;
+      if (data) setImage(data);
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [setImage]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -122,48 +143,57 @@ export default function GymAnalyzerPage() {
     if (file?.type.startsWith("image/")) {
       const reader = new FileReader();
       reader.onload = evt => {
-        setImageData(evt.target?.result as string);
-        setResults(null);
-        setError("");
+        const data = evt.target?.result as string;
+        if (data) setImage(data);
       };
       reader.readAsDataURL(file);
     }
-  }, []);
+  }, [setImage]);
 
   const analyze = useCallback(async () => {
-    if (!imageData) return;
+    // Use ref to get latest image data (avoids stale closure issues)
+    const imgData = imageDataRef.current;
+    if (!imgData) return;
+    if (loading) return; // prevent double click
+
     setLoading(true);
     setLoadingStep(1);
     setError("");
     setResults(null);
 
     try {
-      // Step 1-2: Prepare
+      // Convert data URL to blob
       setLoadingStep(2);
-      await new Promise(r => setTimeout(r, 300));
-
-      const resp = await fetch(imageData);
+      const resp = await fetch(imgData);
       const blob = await resp.blob();
+
+      // Verify blob is valid
+      if (blob.size < 100) {
+        throw new Error("Invalid image data — size too small");
+      }
+
       const fd = new FormData();
       fd.append("image", blob, "equipment.jpg");
 
-      // Step 3: Sending to AI
       setLoadingStep(3);
-      await new Promise(r => setTimeout(r, 400));
-
-      const result = await fetch("/api/analyze", { method: "POST", body: fd });
+      const result = await fetch("/api/analyze", {
+        method: "POST",
+        body: fd,
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
 
       if (!result.ok) {
         let errMsg = `Server returned ${result.status}`;
-        try { const errData = await result.json(); if (errData.error) errMsg = errData.error; } catch {}
+        try {
+          const errData = await result.json();
+          if (errData.error) errMsg = errData.error;
+        } catch { /* ignore parse error */ }
         throw new Error(errMsg);
       }
 
-      const data: AnalyzeResponse = await result.json();
-
-      // Step 4: Building results
       setLoadingStep(4);
-      await new Promise(r => setTimeout(r, 300));
+      const data: AnalyzeResponse = await result.json();
 
       if (data.results?.length) {
         setResults(data.results);
@@ -186,7 +216,7 @@ export default function GymAnalyzerPage() {
       setLoading(false);
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     }
-  }, [imageData]);
+  }, [loading]);
 
   return (
     <div className="min-h-screen pb-16">
@@ -205,7 +235,7 @@ export default function GymAnalyzerPage() {
             Cloud AI is identifying every piece of equipment
           </div>
           <div className="flex flex-col gap-1.5 mt-0.5">
-            {["Sending image to AI vision model", "Identifying equipment in photo", "Fetching exercise instructions & videos", "Building your results..."].map((text, i) => (
+            {["Preparing image for analysis", "Converting to request payload", "Sending to AI vision model", "Building exercise instructions"].map((text, i) => (
               <span key={i} className={`text-xs text-[#9aa0b0] transition-all duration-300 flex items-center gap-2 ${loadingStep === i + 1 ? "opacity-100 text-white" : loadingStep > i + 1 ? "opacity-60" : "opacity-40"}`}>
                 {loadingStep > i + 1 ? "✅" : loadingStep === i + 1 ? "🔍" : "○"} {text}
               </span>
@@ -269,6 +299,13 @@ export default function GymAnalyzerPage() {
 
         <canvas ref={canvasRef} className="hidden" />
 
+        {/* Debug: image hash indicator */}
+        {lastImageHash && (
+          <div className="text-[0.6rem] text-[#9aa0b0] opacity-40 text-center mb-1">
+            Image fingerprint: {lastImageHash}
+          </div>
+        )}
+
         {/* Analyze Button */}
         <div className="mb-5">
           <button onClick={analyze} disabled={!imageData || loading}
@@ -300,6 +337,11 @@ export default function GymAnalyzerPage() {
         {/* Results */}
         {results && (
           <div ref={resultsRef}>
+            {lastImageHash && (
+              <div className="text-[0.6rem] text-[#66bb6a] text-center mb-2">
+                ✅ Analyzed image #{lastImageHash}
+              </div>
+            )}
             {visionDesc && (
               <div className="text-xs text-[#9aa0b0] bg-[#242840] rounded-xl p-3 mb-4 leading-relaxed">
                 <strong className="text-[#e8eaed]">AI sees:</strong> {visionDesc}
