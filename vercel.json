@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "api/analyze/route.ts": {
-      "maxDuration": 55
-    }
-  },
   "headers": [
     {
       "source": "/api/(.*)",
