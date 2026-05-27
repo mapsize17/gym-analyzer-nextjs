@@ -33,6 +33,7 @@ interface AnalyzeResponse {
   results?: EquipmentResult[];
   analysis?: AnalysisResult;
   equipment_count?: number;
+  image_hash?: string;
 }
 
 export default function GymAnalyzerPage() {
@@ -46,6 +47,7 @@ export default function GymAnalyzerPage() {
   const [mode, setMode] = useState<"upload" | "camera">("upload");
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [serverImageHash, setServerImageHash] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<HTMLImageElement>(null);
@@ -66,6 +68,7 @@ export default function GymAnalyzerPage() {
     setVisionDesc("");
     setEquipmentCount(0);
     setError("");
+    setServerImageHash("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
@@ -142,6 +145,11 @@ export default function GymAnalyzerPage() {
   const analyze = useCallback(async () => {
     const blob = uploadBlobRef.current;
     if (!blob) return;
+    // Validate blob — if somehow empty, the server gets nothing
+    if (blob.size < 100) {
+      setError("Image data is too small — please upload a valid photo");
+      return;
+    }
 
     // Increment counter to ensure uniqueness
     const myId = ++analyzeIdRef.current;
@@ -155,9 +163,13 @@ export default function GymAnalyzerPage() {
       // Build FormData DIRECTLY from the stored blob — no data URL involvement
       const fd = new FormData();
       fd.append("image", blob, uploadBlobNameRef.current);
+      // Add unique marker to prevent Vercel edge caching identical POST bodies
+      fd.append("_t", String(Date.now()) + "_" + String(myId));
 
       setLoadingStep(3);
-      const result = await fetch("/api/analyze", {
+      // Use unique URL to defeat any edge/service-worker caching
+      const url = "/api/analyze?t=" + Date.now() + "_" + myId;
+      const result = await fetch(url, {
         method: "POST",
         body: fd,
         cache: "no-store",
@@ -182,6 +194,7 @@ export default function GymAnalyzerPage() {
         setResults(data.results);
         setVisionDesc(data.vision_description || "");
         setEquipmentCount(data.equipment_count || data.results.length);
+        setServerImageHash(data.image_hash || "");
       } else if (data.analysis) {
         setResults([{
           key: "detected",
@@ -317,6 +330,11 @@ export default function GymAnalyzerPage() {
         {/* Results */}
         {results && (
           <div ref={resultsRef}>
+            {serverImageHash && (
+              <div className="text-[0.65rem] text-[#66bb6a] text-center mb-2">
+                📸 Server received image #{serverImageHash}
+              </div>
+            )}
             {visionDesc && (
               <div className="text-xs text-[#9aa0b0] bg-[#242840] rounded-xl p-3 mb-4 leading-relaxed">
                 <strong className="text-[#e8eaed]">AI sees:</strong> {visionDesc}

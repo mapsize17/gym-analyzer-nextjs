@@ -1,5 +1,6 @@
 import { EXERCISE_DB, type EquipmentEntry, type Exercise } from "./exercises";
 import * as fs from "fs/promises";
+import { createHash } from "crypto";
 
 const OLLAMA_CLOUD_KEY = process.env.OLLAMA_API_KEY || "";
 const CLOUD_VISION_MODEL = "gemma3:12b";
@@ -134,6 +135,8 @@ export interface AnalysisResult {
   results: ReturnType<typeof buildEquipmentResult>[];
   equipment_count: number;
   debug?: string;
+  image_hash?: string;
+  image_size?: number;
 }
 
 export async function analyzeImage(imagePath: string): Promise<AnalysisResult> {
@@ -172,10 +175,19 @@ export async function analyzeImage(imagePath: string): Promise<AnalysisResult> {
     results.push(buildEquipmentResult(key, EXERCISE_DB[key]));
   }
 
+  // Compute image hash to verify server received the correct image
+  let imageHash = "";
+  try {
+    const buf = await fs.readFile(imagePath);
+    imageHash = createHash("md5").update(buf).digest("hex").slice(0, 8);
+  } catch { /* ignore */ }
+
   return {
     vision_description: desc.slice(0, 600),
     matched_equipment: [...processed],
     results,
     equipment_count: results.length,
+    image_hash: imageHash,
+    image_size: results.length ? undefined : undefined,
   };
 }
