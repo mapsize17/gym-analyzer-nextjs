@@ -137,5 +137,35 @@ export const EXERCISE_DB: Record<string, EquipmentEntry> = {
     common_exercises:[
       { name:"Elliptical Training", video_id:"EesEvYohy5o", muscles_worked:["Quadriceps","Hamstrings","Glutes","Upper body"],
         steps:["Step onto machine, grip handles.","Start pedaling smooth forward motion.","Increase resistance gradually.","Reverse motion for different muscle fibers.","Maintain upright posture, don't lean on console."],
-        common_mistakes:["Leaning heavily on console","Staying at low resistance"], safety_tips:["Start with no resistance to warm up","Keep natural stride"] }] }
+        common_mistakes:["Leaning heavily on console","Staying at low resistance"], safety_tips:["Start with no resistance to warm up","Keep natural stride"] }] },
+  "chest press machine": { name:"Chest Press Machine", category:"machine",
+    primary_muscles:["Chest (Pectoralis Major)","Shoulders (Anterior Deltoid)","Triceps"],
+    common_exercises:[
+      { name:"Seated Chest Press", video_id:"0cXAp6WhSj4", muscles_worked:["Pectoralis Major","Anterior Deltoid","Triceps Brachii"],
+        steps:["Adjust seat so handles are at mid-chest level.","Grip handles, keep back flat against pad.","Press forward until arms are extended but not locked.","Slowly return to starting position with control.","Breathe out on the press, in on the return."],
+        common_mistakes:["Using shoulders too much instead of chest","Not going through full range of motion","Letting elbows flare out"], safety_tips:["Keep shoulder blades retracted and pinched","Don't bounce the weight","Start with lighter weight to learn the movement pattern"] }] },
+  "leg extension machine": { name:"Leg Extension Machine", category:"machine",
+    primary_muscles:["Quadriceps"],
+    common_exercises:[
+      { name:"Leg Extension", video_id:"nDh_BlnLCGc", muscles_worked:["Rectus Femoris","Vastus Lateralis","Vastus Medialis","Vastus Intermedius"],
+        steps:["Sit with back against pad, adjust roller pad just above ankles.","Grip side handles for stability.","Extend legs until straight but not locked.","Pause at top squeezing quads.","Lower with control."],
+        common_mistakes:["Kicking up too fast using momentum","Locking knees at top"], safety_tips:["Don't let the weight drop on the negative","Control the full range of motion"] }] },
+  "leg curl machine": { name:"Leg Curl Machine", category:"machine",
+    primary_muscles:["Hamstrings","Glutes","Calves"],
+    common_exercises:[
+      { name:"Seated Leg Curl", video_id:"nDh_BlnLCGc", muscles_worked:["Biceps Femoris","Semitendinosus","Semimembranosus","Gastrocnemius"],
+        steps:["Sit with pad resting behind lower calves, above heels.","Keep thighs pressed against seat pad.","Curl legs by pulling heels toward glutes.","Pause at peak contraction.","Slowly lower back to start."],
+        common_mistakes:["Using upper body momentum","Not curling full range"], safety_tips:["Don't let hips lift off seat","Control the eccentric (lowering) phase"] }] },
+  "shoulder press machine": { name:"Shoulder Press Machine", category:"machine",
+    primary_muscles:["Shoulders (Deltoids)","Triceps","Upper Chest"],
+    common_exercises:[
+      { name:"Seated Shoulder Press", video_id:"xtsbSAgNBpI", muscles_worked:["Anterior Deltoid","Lateral Deltoid","Triceps Brachii"],
+        steps:["Adjust seat so handles are at shoulder height.","Grip handles, keep back flat against pad.","Press upward until arms are extended overhead.","Lower with control to shoulder height."],
+        common_mistakes:["Leaning back too much","Not going to full extension"], safety_tips:["Keep core braced","Don't lock elbows at the top"] }] },
+  "lat pulldown machine": { name:"Lat Pulldown Machine", category:"machine",
+    primary_muscles:["Back (Latissimus Dorsi)","Biceps","Shoulders"],
+    common_exercises:[
+      { name:"Lat Pulldown", video_id:"OEXosPwzFdc", muscles_worked:["Latissimus Dorsi","Biceps Brachii","Rhomboids"],
+        steps:["Sit facing machine, adjust thigh pad to secure legs.","Grip bar wider than shoulder-width, palms away.","Pull bar down to upper chest, squeezing shoulder blades.","Slowly return to start without letting weight stack touch."],
+        common_mistakes:["Using momentum to swing","Pulling bar behind neck"], safety_tips:["Keep chest up and back straight","Don't lean back excessively"] }] }
 };
